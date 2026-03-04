@@ -386,7 +386,9 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     if is_public_bind(host) && config.tunnel.provider == "none" && !config.gateway.allow_public_bind
     {
         anyhow::bail!(
-            "🛑 Refusing to bind to {host} — gateway would be exposed to the internet.\n\
+            "🛑 Refusing to bind to {host} — gateway would be reachable outside localhost\n\
+             (for example from your local network, and potentially the internet\n\
+             depending on your router/firewall setup).\n\
              Fix: use --host 127.0.0.1 (default), configure a tunnel, or set\n\
              [gateway] allow_public_bind = true in config.toml (NOT recommended)."
         );
@@ -1068,9 +1070,16 @@ async fn prepare_gateway_messages_for_provider(
     messages.push(ChatMessage::system(system_prompt));
     messages.extend(user_messages);
 
-    let multimodal_config = state.config.lock().multimodal.clone();
-    let prepared =
-        crate::multimodal::prepare_messages_for_provider(&messages, &multimodal_config).await?;
+    let (multimodal_config, provider_hint) = {
+        let config = state.config.lock();
+        (config.multimodal.clone(), config.default_provider.clone())
+    };
+    let prepared = crate::multimodal::prepare_messages_for_provider_with_provider_hint(
+        &messages,
+        &multimodal_config,
+        provider_hint.as_deref(),
+    )
+    .await?;
 
     Ok(prepared.messages)
 }
