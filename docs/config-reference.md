@@ -46,6 +46,7 @@ Use named profiles to map a logical provider id to a provider name/base URL and 
 |---|---|---|
 | `name` | unset | Optional provider id override (for example `openai`, `openai-codex`) |
 | `base_url` | unset | Optional OpenAI-compatible endpoint URL |
+| `auth_header` | unset | Optional auth header for `custom:` endpoints (for example `api-key` for Azure OpenAI) |
 | `wire_api` | unset | Optional protocol mode: `responses` or `chat_completions` |
 | `model` | unset | Optional profile-scoped default model |
 | `api_key` | unset | Optional profile-scoped API key (used when top-level `api_key` is empty) |
@@ -55,6 +56,7 @@ Notes:
 
 - If both top-level `api_key` and profile `api_key` are present, top-level `api_key` wins.
 - If top-level `default_model` is still the global OpenRouter default, profile `model` is used as an automatic compatibility override.
+- `auth_header` is only applied when the resolved provider is `custom:<url>` and the profile `base_url` matches that custom URL.
 - Secrets encryption applies to profile API keys when `secrets.encrypt = true`.
 
 Example:
@@ -403,12 +405,18 @@ Environment overrides:
 | Key | Default | Purpose |
 |---|---|---|
 | `canary_tokens` | `true` | Inject per-turn canary token into system prompt and block responses that echo it |
+| `semantic_guard` | `false` | Enable semantic prompt-injection detection using vector similarity over a curated attack corpus |
+| `semantic_guard_collection` | `"semantic_guard"` | Qdrant collection name used for semantic guard corpus and recall |
+| `semantic_guard_threshold` | `0.82` | Minimum cosine similarity score to treat semantic recall as a prompt-injection signal |
 
 Notes:
 
 - Canary tokens are generated per turn and are redacted from runtime traces.
 - This guard is additive to `security.outbound_leak_guard`: canary catches prompt-context leakage, while outbound leak guard catches credential-like material.
 - Set `canary_tokens = false` to disable this layer.
+- `semantic_guard` is opt-in and requires a working vector backend (`memory.qdrant.url` or `QDRANT_URL`) plus non-zero embedding dimensions.
+- `semantic_guard_collection` must be non-empty.
+- `semantic_guard_threshold` must be in the inclusive range `0.0..=1.0`.
 
 ## `[security.syscall_anomaly]`
 

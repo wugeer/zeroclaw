@@ -2148,6 +2148,8 @@ pub async fn run_tool_call_loop(
                         arguments: tool_args.clone(),
                     };
 
+                    // Only prompt interactively on CLI; deny on other channels
+                    // (remote channels cannot provide interactive approval).
                     let decision = if channel_name == "cli" {
                         mgr.prompt_cli(&request)
                     } else if let Some(ctx) = non_cli_approval_context.as_ref() {
@@ -2178,13 +2180,26 @@ pub async fn run_tool_call_loop(
                         )
                         .await
                     } else {
+                        tracing::warn!(
+                            tool = %tool_name,
+                            channel = %channel_name,
+                            "Tool requires approval but channel cannot prompt — denied"
+                        );
                         ApprovalResponse::No
                     };
 
                     mgr.record_decision(&tool_name, &tool_args, decision, channel_name);
 
                     if decision == ApprovalResponse::No {
-                        let denied = "Denied by user.".to_string();
+                        let denied = if channel_name == "cli" {
+                            "Denied by user.".to_string()
+                        } else {
+                            format!(
+                                "Tool '{}' requires approval but channel '{}' cannot prompt interactively. \
+                                 Configure auto_approve or set autonomy level to Full to allow.",
+                                tool_name, channel_name
+                            )
+                        };
                         runtime_trace::record_event(
                             "tool_call_result",
                             Some(channel_name),
@@ -2718,6 +2733,7 @@ pub async fn run(
         reasoning_enabled: config.runtime.reasoning_enabled,
         reasoning_level: config.effective_provider_reasoning_level(),
         custom_provider_api_mode: config.provider_api.map(|mode| mode.as_compatible_mode()),
+        custom_provider_auth_header: config.effective_custom_provider_auth_header(),
         max_tokens_override: None,
         model_support_vision: config.model_support_vision,
     };
@@ -3423,6 +3439,7 @@ pub async fn process_message_with_session(
         reasoning_enabled: config.runtime.reasoning_enabled,
         reasoning_level: config.effective_provider_reasoning_level(),
         custom_provider_api_mode: config.provider_api.map(|mode| mode.as_compatible_mode()),
+        custom_provider_auth_header: config.effective_custom_provider_auth_header(),
         max_tokens_override: None,
         model_support_vision: config.model_support_vision,
     };
@@ -7598,7 +7615,6 @@ Let me check the result."#;
         assert!(should_emit_tool_progress(ProgressMode::Compact));
         assert!(!should_emit_tool_progress(ProgressMode::Off));
     }
-
     #[test]
     fn progress_tracker_renders_in_place_block() {
         let mut tracker = ProgressTracker::default();
